@@ -1,0 +1,32 @@
+name: Build
+
+on:
+  push:
+    branches: ['v*']
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build
+        run: |
+          . ./set_env
+          echo "OPENWRT_DIR=$OPENWRT_DIR" >> $GITHUB_ENV
+          echo "OPENWRT_TARGET=$OPENWRT_TARGET" >> $GITHUB_ENV
+          ./ci_build
+
+      - name: Upload Release Asset
+        uses: softprops/action-gh-release@v2
+        with:
+          files: $OPENWRT_DIR/bin/targets/$OPENWRT_TARGET/*
+          tag_name: ${{ github.sha }}
+          generate_release_notes: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

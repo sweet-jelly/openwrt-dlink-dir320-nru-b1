@@ -1,0 +1,598 @@
+diff --git a/include/download.mk b/include/download.mk
+index 9ab0b6c08f..3469037245 100644
+--- a/include/download.mk
++++ b/include/download.mk
+@@ -143,7 +143,7 @@ define DownloadMethod/unknown
+ endef
+
+ define DownloadMethod/default
+-	$(SCRIPT_DIR)/download.pl "$(DL_DIR)" "$(FILE)" "$(HASH)" "$(URL_FILE)" $(foreach url,$(URL),"$(url)") \
++	$(SCRIPT_DIR)/download.py "$(DL_DIR)" "$(FILE)" "$(HASH)" "$(URL_FILE)" $(foreach url,$(URL),"$(url)") \
+ 	$(if $(filter check,$(1)), \
+ 		$(call check_hash,$(FILE),$(HASH),$(2)$(call hash_var,$(MD5SUM))) \
+ 		$(call check_md5,$(MD5SUM),$(2)MD5SUM,$(2)HASH) \
+@@ -154,7 +154,7 @@ endef
+ # $(2): "PKG_" if <name> as in Download/<name> is "default", otherwise "Download/<name>:"
+ # $(3): shell command sequence to do the download
+ define wrap_mirror
+-$(if $(if $(MIRROR),$(filter-out x,$(MIRROR_HASH))),$(SCRIPT_DIR)/download.pl "$(DL_DIR)" "$(FILE)" "$(MIRROR_HASH)" "" || ( $(3) ),$(3)) \
++$(if $(if $(MIRROR),$(filter-out x,$(MIRROR_HASH))),$(SCRIPT_DIR)/download.py "$(DL_DIR)" "$(FILE)" "$(MIRROR_HASH)" "" || ( $(3) ),$(3)) \
+ $(if $(filter check,$(1)), \
+ 	$(call check_hash,$(FILE),$(MIRROR_HASH),$(2)MIRROR_$(call hash_var,$(MIRROR_MD5SUM))) \
+ 	$(call check_md5,$(MIRROR_MD5SUM),$(2)MIRROR_MD5SUM,$(2)MIRROR_HASH) \
+diff --git a/scripts/download.py b/scripts/download.py
+new file mode 100755
+index 0000000000..cc6b149553
+--- /dev/null
++++ b/scripts/download.py
+@@ -0,0 +1,570 @@
++#!/usr/bin/env python3
++#
++# Copyright (C) 2006 OpenWrt.org
++# Copyright (C) 2016 LEDE project
++#
++# This is free software, licensed under the GNU General Public License v2.
++# See /LICENSE for more information.
++#
++
++import sys
++import os
++import re
++import ssl
++import time
++import signal
++import shutil
++import hashlib
++import ftplib
++from urllib.request import urlopen, Request
++from urllib.error import URLError, HTTPError
++from urllib.parse import urlparse
++
++# ── Tunables ─────────────────────────────────────────────────────────────────
++
++MIN_SPEED = 100 * 1024    # bytes/s — abort if slower for STALL_TIMEOUT
++STALL_TIMEOUT = 5          # seconds — window for speed check
++CONNECT_TIMEOUT = 20       # seconds
++READ_CHUNK = 262144        # 256 KB
++PROGRESS_INTERVAL = 1.0    # seconds between progress line updates
++
++# ── Globals ──────────────────────────────────────────────────────────────────
++
++target = ""
++filename = ""
++file_hash = ""
++url_filename = ""
++scriptdir = ""
++dl_path = ""
++hash_path = ""
++hash_algo = None  # hashlib constructor (sha256 or md5), or None if "skip"
++
++# ── Helpers ──────────────────────────────────────────────────────────────────
++
++def cleanup():
++    for p in (dl_path, hash_path):
++        try:
++            os.unlink(p)
++        except OSError:
++            pass
++
++
++def die(msg):
++    print(msg, file=sys.stderr)
++    cleanup()
++    sys.exit(1)
++
++
++def signal_handler(signum, _frame):
++    name = signal.Signals(signum).name
++    print(f"\n{name} received, aborting.", file=sys.stderr)
++    cleanup()
++    sys.exit(128 + signum)
++
++
++def fmt_size(n):
++    if n >= 1024 * 1024:
++        return f"{n / (1024 * 1024):.1f} MB"
++    if n >= 1024:
++        return f"{n / 1024:.1f} KB"
++    return f"{n} B"
++
++
++def fmt_speed(bps):
++    if bps >= 1024 * 1024:
++        return f"{bps / (1024 * 1024):.1f} MB/s"
++    if bps >= 1024:
++        return f"{bps / 1024:.1f} KB/s"
++    return f"{bps:.0f} B/s"
++
++
++def make_ssl_context():
++    ctx = ssl.create_default_context()
++    if os.environ.get("DOWNLOAD_CHECK_CERTIFICATE", "n") == "y":
++        print("WARNING: DOWNLOAD_CHECK_CERTIFICATE verification disabled", file=sys.stderr)
++        ctx.check_hostname = False
++        ctx.verify_mode = ssl.CERT_NONE
++    ca = os.environ.get("SSL_CERT_FILE")
++    if ca:
++        ctx.load_verify_locations(ca)
++    return ctx
++
++
++def verify_hash(path):
++    """Check hash of a file. Returns True if ok, False if mismatch. Skips if no hash_algo."""
++    if not hash_algo:
++        return True
++    h = hash_algo()
++    with open(path, "rb") as f:
++        while True:
++            chunk = f.read(READ_CHUNK)
++            if not chunk:
++                break
++            h.update(chunk)
++    computed = h.hexdigest()
++    if computed == file_hash:
++        return True
++    print(f"Hash mismatch (file: {computed}, expected: {file_hash}) - deleting.", file=sys.stderr)
++    return False
++
++# ── Speed-monitored writer ───────────────────────────────────────────────────
++
++class SpeedAbort(Exception):
++    def __init__(self, speed):
++        self.speed = speed
++
++
++class DownloadWriter:
++    """Wraps a file handle + optional hasher with speed monitoring and progress."""
++
++    def __init__(self, out_fh, total_expected=None):
++        self.out_fh = out_fh
++        self.hasher = hash_algo() if hash_algo else None
++        self.total_expected = total_expected
++        self.total_bytes = 0
++        self.window = []
++        self.start = time.monotonic()
++        self.last_progress = 0.0
++
++    def write(self, chunk):
++        self.out_fh.write(chunk)
++        if self.hasher:
++            self.hasher.update(chunk)
++
++        self.total_bytes += len(chunk)
++        now = time.monotonic()
++
++        self.window.append((now, self.total_bytes))
++        while len(self.window) > 1 and (now - self.window[0][0]) > STALL_TIMEOUT:
++            self.window.pop(0)
++
++        # Speed check
++        if len(self.window) >= 2:
++            dt = now - self.window[0][0]
++            if dt >= STALL_TIMEOUT:
++                dbytes = self.total_bytes - self.window[0][1]
++                speed = dbytes / dt
++                if speed < MIN_SPEED:
++                    self._progress(now, force=True)
++                    raise SpeedAbort(speed)
++
++        # Progress
++        self._progress(now)
++
++    def _progress(self, now, force=False):
++        if not force and (now - self.last_progress) < PROGRESS_INTERVAL:
++            return
++        self.last_progress = now
++
++        if len(self.window) >= 2:
++            dt = now - self.window[0][0]
++            speed = (self.total_bytes - self.window[0][1]) / dt if dt > 0 else 0
++        else:
++            speed = 0
++
++        if self.total_expected:
++            pct = self.total_bytes * 100.0 / self.total_expected
++            line = (
++                f"\r  {fmt_size(self.total_bytes)} / {fmt_size(self.total_expected)}"
++                f"  ({pct:.0f}%)  {fmt_speed(speed)}   "
++            )
++        else:
++            line = f"\r  {fmt_size(self.total_bytes)}  {fmt_speed(speed)}   "
++        print(line, end="", file=sys.stderr)
++
++    def finish(self):
++        elapsed = time.monotonic() - self.start
++        avg = self.total_bytes / elapsed if elapsed > 0 else 0
++        print(
++            f"\r  {fmt_size(self.total_bytes)} done in {elapsed:.1f}s"
++            f" ({fmt_speed(avg)} avg){' ' * 20}",
++            file=sys.stderr,
++        )
++
++    def hexdigest(self):
++        return self.hasher.hexdigest() if self.hasher else None
++
++# ── Download: HTTP / HTTPS ───────────────────────────────────────────────────
++
++def download_http(url, parsed):
++    ctx = ssl_context if parsed.scheme == "https" else None
++    req = Request(url, headers={"User-Agent": "OpenWrt-download/1.0"})
++
++    try:
++        resp = urlopen(req, timeout=CONNECT_TIMEOUT, context=ctx)
++    except HTTPError as e:
++        print(f"Download failed: HTTP {e.code} {e.reason}", file=sys.stderr)
++        return False
++    except URLError as e:
++        reason = str(e.reason)
++        if "certificate verify failed" in reason.lower():
++            print(
++                f"Download failed: TLS verification failed for {parsed.hostname}\n"
++                f"  {reason}\n"
++                f"  Set SSL_VERIFY=0 to disable, or install the correct CA cert.",
++                file=sys.stderr,
++            )
++        else:
++            print(f"Download failed: {reason}", file=sys.stderr)
++        return False
++    except Exception as e:
++        print(f"Download failed: HTTP {e}", file=sys.stderr)
++        return False
++
++    total_expected = None
++    try:
++        cl = resp.getheader("Content-Length")
++        if cl:
++            total_expected = int(cl)
++    except (AttributeError, ValueError):
++        pass
++
++    try:
++        with open(dl_path, "wb") as fh:
++            writer = DownloadWriter(fh, total_expected)
++            while True:
++                chunk = resp.read(READ_CHUNK)
++                if not chunk:
++                    break
++                writer.write(chunk)
++            writer.finish()
++    except SpeedAbort as e:
++        print(
++            f"\nToo slow ({e.speed / 1024:.1f} KB/s over {STALL_TIMEOUT}s,"
++            f" need {MIN_SPEED // 1024} KB/s) - next mirror.",
++            file=sys.stderr,
++        )
++        return False
++    except Exception as e:
++        print(f"\nRead error: {e}", file=sys.stderr)
++        return False
++    finally:
++        resp.close()
++
++    _write_hash(writer)
++    return True
++
++# ── Download: FTP ────────────────────────────────────────────────────────────
++
++def download_ftp(url, parsed):
++    host = parsed.hostname
++    port = parsed.port or 21
++    path = parsed.path
++
++    try:
++        ftp = ftplib.FTP()
++        ftp.connect(host, port, timeout=CONNECT_TIMEOUT)
++        ftp.login()
++        ftp.voidcmd("TYPE I")
++    except Exception as e:
++        print(f"FTP connect failed: {e}", file=sys.stderr)
++        return False
++
++    total_expected = None
++    try:
++        total_expected = ftp.size(path)
++    except ftplib.error_perm:
++        pass
++
++    try:
++        with open(dl_path, "wb") as fh:
++            writer = DownloadWriter(fh, total_expected)
++
++            def callback(chunk):
++                writer.write(chunk)
++
++            ftp.retrbinary(f"RETR {path}", callback, blocksize=READ_CHUNK)
++            writer.finish()
++    except SpeedAbort as e:
++        print(
++            f"\nToo slow ({e.speed / 1024:.1f} KB/s over {STALL_TIMEOUT}s,"
++            f" need {MIN_SPEED // 1024} KB/s) - next mirror.",
++            file=sys.stderr,
++        )
++        return False
++    except Exception as e:
++        print(f"\nFTP download error: {e}", file=sys.stderr)
++        return False
++    finally:
++        try:
++            ftp.quit()
++        except Exception:
++            pass
++
++    _write_hash(writer)
++    return True
++
++# ── Download: file:// ────────────────────────────────────────────────────────
++
++def download_local(mirror_path):
++    if not os.path.isdir(mirror_path):
++        print(f"Bad local cache directory: {mirror_path}", file=sys.stderr)
++        return False
++
++    found = []
++    for root, _dirs, files in os.walk(mirror_path, followlinks=True):
++        if filename in files:
++            found.append(os.path.join(root, filename))
++
++    if not found:
++        print(f"{filename} not found in {mirror_path}.", file=sys.stderr)
++        return False
++    if len(found) > 1:
++        print(f"Multiple copies of {filename} in {mirror_path}, need exactly one.", file=sys.stderr)
++        return False
++
++    print(f"Copying {filename} from {found[0]}", file=sys.stderr)
++    os.makedirs(target, exist_ok=True)
++    shutil.copy2(found[0], dl_path)
++    return True
++
++# ── Common ───────────────────────────────────────────────────────────────────
++
++def _write_hash(writer):
++    digest = writer.hexdigest()
++    if digest:
++        with open(hash_path, "w") as hf:
++            hf.write(digest + "\n")
++
++
++def download(mirror, dl_filename):
++    mirror = mirror.rstrip("/")
++
++    if mirror.startswith("file://"):
++        ok = download_local(mirror[7:])
++    else:
++        url = f"{mirror}/{dl_filename}"
++        parsed = urlparse(url)
++
++        if not parsed.scheme or not parsed.hostname:
++            print(f"Skipping invalid URL: {url}", file=sys.stderr)
++            return False
++
++        print(f"+ {url}", file=sys.stderr)
++        os.makedirs(target, exist_ok=True)
++
++        if parsed.scheme == "ftp":
++            ok = download_ftp(url, parsed)
++        elif parsed.scheme in ("http", "https"):
++            ok = download_http(url, parsed)
++        else:
++            print(f"Unsupported scheme: {parsed.scheme}", file=sys.stderr)
++            return False
++
++    if not ok:
++        cleanup()
++        return False
++
++    if not verify_hash(dl_path):
++        cleanup()
++        return False
++
++    final = os.path.join(target, filename)
++    try:
++        os.unlink(final)
++    except OSError:
++        pass
++    os.rename(dl_path, final)
++    cleanup()
++    return True
++
++# ── Mirror list ──────────────────────────────────────────────────────────────
++
++def localmirrors():
++    mlist = []
++
++    try:
++        with open(os.path.join(scriptdir, "localmirrors")) as f:
++            mlist.extend(line.strip() for line in f if line.strip())
++    except OSError:
++        pass
++
++    topdir = os.environ.get("TOPDIR", "")
++    if topdir:
++        try:
++            with open(os.path.join(topdir, ".config")) as f:
++                for line in f:
++                    line = line.strip()
++                    if line.startswith('CONFIG_LOCALMIRROR="') and line.endswith('"'):
++                        val = line[len('CONFIG_LOCALMIRROR="'):-1]
++                        mlist.extend(m.strip() for m in val.split(";") if m.strip())
++        except OSError:
++            pass
++
++    env = os.environ.get("DOWNLOAD_MIRROR", "")
++    if env:
++        mlist.extend(m.strip() for m in env.split(";") if m.strip())
++
++    return mlist
++
++
++def expand_mirrors(args):
++    """Expand @SHORTHAND/ entries into concrete URLs."""
++
++    # (prefix, [url_templates]) — {0} is replaced with the suffix
++    shorthands = {
++        "@SF/": {
++            "repeat": 5,
++            "urls": ["https://downloads.sourceforge.net/{0}"],
++        },
++        "@GITHUB/": {
++            "repeat": 5,
++            "urls": ["https://raw.githubusercontent.com/{0}"],
++        },
++        "@APACHE/": {"urls": [
++            "https://mirror.netcologne.de/apache.org/{0}",
++            "https://mirror.aarnet.edu.au/pub/apache/{0}",
++            "https://mirror.csclub.uwaterloo.ca/apache/{0}",
++            "https://archive.apache.org/dist/{0}",
++            "http://mirror.cogentco.com/pub/apache/{0}",
++            "http://mirror.navercorp.com/apache/{0}",
++            "http://ftp.jaist.ac.jp/pub/apache/{0}",
++            "ftp://apache.cs.utah.edu/apache.org/{0}",
++            "ftp://apache.mirrors.ovh.net/ftp.apache.org/dist/{0}",
++        ]},
++        "@GNU/": {"urls": [
++            "https://mirror.csclub.uwaterloo.ca/gnu/{0}",
++            "https://mirror.netcologne.de/gnu/{0}",
++            "http://ftp.kddilabs.jp/GNU/gnu/{0}",
++            "http://www.nic.funet.fi/pub/gnu/gnu/{0}",
++            "http://mirror.internode.on.net/pub/gnu/{0}",
++            "http://mirror.navercorp.com/gnu/{0}",
++            "ftp://mirrors.rit.edu/gnu/{0}",
++            "ftp://download.xs4all.nl/pub/gnu/",
++        ]},
++        "@SAVANNAH/": {"urls": [
++            "https://mirror.netcologne.de/savannah/{0}",
++            "https://mirror.csclub.uwaterloo.ca/nongnu/{0}",
++            "http://ftp.acc.umu.se/mirror/gnu.org/savannah/{0}",
++            "http://nongnu.uib.no/{0}",
++            "http://ftp.igh.cnrs.fr/pub/nongnu/{0}",
++            "http://public.p-knowledge.co.jp/Savannah-nongnu-mirror/{0}",
++            "ftp://cdimage.debian.org/mirror/gnu.org/savannah/{0}",
++            "ftp://ftp.acc.umu.se/mirror/gnu.org/savannah/{0}",
++        ]},
++        "@GNOME/": {"urls": [
++            "https://mirror.csclub.uwaterloo.ca/gnome/sources/{0}",
++            "http://ftp.acc.umu.se/pub/GNOME/sources/{0}",
++            "http://ftp.kaist.ac.kr/gnome/sources/{0}",
++            "http://www.mirrorservice.org/sites/ftp.gnome.org/pub/GNOME/sources/{0}",
++            "http://mirror.internode.on.net/pub/gnome/sources/{0}",
++            "http://ftp.belnet.be/ftp.gnome.org/sources/{0}",
++            "ftp://ftp.cse.buffalo.edu/pub/Gnome/sources/{0}",
++            "ftp://ftp.nara.wide.ad.jp/pub/X11/GNOME/sources/{0}",
++        ]},
++    }
++
++    kernel_urls = [
++        "https://cdn.kernel.org/pub/{0}",
++        "https://mirror.rackspace.com/kernel.org/{0}",
++        "http://download.xs4all.nl/ftp.kernel.org/pub/{0}",
++        "http://mirrors.mit.edu/kernel/{0}",
++        "http://ftp.nara.wide.ad.jp/pub/kernel.org/{0}",
++        "http://www.ring.gr.jp/archives/linux/kernel.org/{0}",
++        "ftp://ftp.riken.jp/Linux/kernel.org/{0}",
++        "ftp://www.mirrorservice.org/sites/ftp.kernel.org/pub/{0}",
++    ]
++
++    result = []
++    for mirror in args:
++        # Check simple shorthands
++        matched = False
++        for prefix, cfg in shorthands.items():
++            if mirror.startswith(prefix):
++                suffix = mirror[len(prefix):]
++                repeat = cfg.get("repeat", 1)
++                for _ in range(repeat):
++                    for tmpl in cfg["urls"]:
++                        result.append(tmpl.format(suffix))
++                matched = True
++                break
++
++        if matched:
++            continue
++
++        # @KERNEL/ needs special logic for -rc and longterm
++        if mirror.startswith("@KERNEL/"):
++            suffix = mirror[8:]
++            dirs = [suffix]
++            if re.search(r'linux-\d+\.\d+(?:\.\d+)?-rc', filename):
++                dirs.append(f"{suffix}/testing")
++            else:
++                m = re.search(r'linux-(\d+\.\d+(?:\.\d+)?)', filename)
++                if m:
++                    dirs.append(f"{suffix}/longterm/v{m.group(1)}")
++            for d in dirs:
++                for tmpl in kernel_urls:
++                    result.append(tmpl.format(d))
++            continue
++
++        result.append(mirror)
++
++    return result
++
++# ── Main ─────────────────────────────────────────────────────────────────────
++
++def main():
++    global target, filename, file_hash, url_filename, scriptdir
++    global dl_path, hash_path, hash_algo, ssl_context
++
++    args = sys.argv[1:]
++    if len(args) < 3:
++        die(f"Syntax: {sys.argv[0]} <target dir> <filename> <hash> [<url filename>] [<mirror> ...]")
++
++    target = os.path.expanduser(args.pop(0))
++    filename = args.pop(0)
++    file_hash = args.pop(0)
++
++    url_filename = None
++    if args and "://" not in args[0]:
++        url_filename = args.pop(0)
++    if not url_filename:
++        url_filename = filename
++
++    scriptdir = os.path.dirname(os.path.abspath(sys.argv[0]))
++    dl_path = os.path.join(target, filename + ".dl")
++    hash_path = os.path.join(target, filename + ".hash")
++
++    # Determine hash algorithm
++    hlen = len(file_hash)
++    if hlen == 64:
++        hash_algo = hashlib.sha256
++    elif hlen == 32:
++        hash_algo = hashlib.md5
++    elif file_hash == "skip":
++        hash_algo = None
++    else:
++        die("Bad hash: must be SHA256 (64 hex) or MD5 (32 hex) or literal 'skip'.")
++
++    ssl_context = make_ssl_context()
++
++    # If file already exists, verify and exit
++    final = os.path.join(target, filename)
++    if os.path.isfile(final):
++        if verify_hash(final):
++            sys.exit(0)
++        os.unlink(final)
++
++    # Build mirror list
++    mirrors = localmirrors()
++    mirrors.extend(expand_mirrors(args))
++    mirrors.append("https://sources.openwrt.org")
++    mirrors.append("https://mirror2.openwrt.org/sources")
++
++    # Try mirrors
++    while not os.path.isfile(final):
++        if not mirrors:
++            die("No more mirrors to try - giving up.")
++
++        mirror = mirrors.pop(0)
++        if download(mirror, url_filename):
++            break
++        if url_filename != filename and download(mirror, filename):
++            break
++
++
++signal.signal(signal.SIGINT, signal_handler)
++signal.signal(signal.SIGTERM, signal_handler)
++
++if __name__ == "__main__":
++    main()

@@ -1,0 +1,4 @@
+trap 'kill $SERVER_PID' EXIT
+python3 -m http.server 9000 --directory ./bin/23.05.6/targets/ramips/rt305x/ &
+SERVER_PID=$!
+ssh -o StrictHostKeyChecking=no root@192.168.1.10 "sysupgrade -p -v -n http://192.168.1.175:9000/openwrt-ramips-rt305x-dlink_dir-320-b1-squashfs-sysupgrade.bin"

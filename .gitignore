@@ -1,0 +1,5 @@
+staging_dir/
+ccache/
+build_dir/
+*/bin/
+**/.env

@@ -1,0 +1,18 @@
+#/bin/bash
+
+set -e
+
+if docker image inspect "$DOCKER_IMAGE_NAME:$OPENWRT_VERSION" > /dev/null 2>&1 ;
+    echo image "$DOCKER_IMAGE_NAME:$OPENWRT_VERSION" already exists
+    exit 0
+fi
+
+env > "$OPENWRT_DIR/.env"
+docker build \
+    -f "$ROOT_DIR/Dockerfile"
+    --build-context scripts="$ROOT_DIR/build_scripts" \
+    --build-context openwrt="$OPENWRT_DIR" \
+    -t "$DOCKER_IMAGE_NAME:$OPENWRT_VERSION" \
+    --env_file "$OPENWRT_DIR/.env" \
+    --mount "type=bind,src=${OPENWRT_DIR}/bin,dst=/openwrt/bin" \
+    "$ROOT_DIR"

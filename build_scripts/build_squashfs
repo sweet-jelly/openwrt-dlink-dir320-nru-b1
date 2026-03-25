@@ -1,0 +1,12 @@
+#!/bin/bash
+
+set -e
+
+wget -O $TOOLCHAIN_FILE_PATH
+
+./scripts/ext-toolchain.sh \
+    --toolchain $TOOLCHAIN_FILE_PATH \
+    --overwrite-config \
+    --config "$OPENWRT_TARGET"
+
+make -j$(nproc) || make V=sc

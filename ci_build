@@ -1,0 +1,12 @@
+#!/bin/bash
+
+set -e
+
+. ./set_env
+
+mkdir -p "$OPENWRT_DIR/bin"
+chown -R $BUILDER_UID:$BUILDER_GID "$OPENWRT_DIR/bin"
+
+
+$SCRIPTS_DIR/build_docker_image
+docker run --rm --name "$DOCKER_CONTAINER_NAME" --network host "$DOCKER_IMAGE_NAME:$OPENWRT_VERSION"

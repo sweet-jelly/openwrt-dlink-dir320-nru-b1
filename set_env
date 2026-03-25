@@ -1,0 +1,36 @@
+#!/bin/bash
+
+set -e
+
+export ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export SCRIPTS_DIR="$ROOT_DIR/build_scripts"
+
+SUBFOLDER="$(git branch --show-current | grep -o -P '[0-9\.]+')"
+if [[ ! -d "$ROOT_DIR/$SUBFOLDER" ]] ; then
+    echo "can't find "$ROOT_DIR/$SUBFOLDER", check the branch name!"
+    exit 1
+fi
+export OPENWRT_DIR="$ROOT_DIR/$SUBFOLDER"
+
+if [[ -x "$OPENWRT_DIR/set_env" ]] ; then
+    . "$OPENWRT_DIR/set_env"
+fi
+
+export BUILDER_UID="$(id -u)"
+export BUILDER_GID="$(getent group builder | cut -d: -f3)"
+
+export OPENWRT_ARCH="ramips"
+export OPENWRT_BOARD="rt305x"
+
+export ROOT_DIR="$(dirname $OPENWRT_DIR)"
+export OPENWRT_TARGET="$OPENWRT_ARCH/$OPENWRT_BOARD"
+export OPENWRT_VERSION="$(basename $OPENWRT_DIR)"
+
+export DOCKER_IMAGE_NAME="dlink-dir320-nru-b1-openwrt"
+export DOCKER_CONTAINER_NAME="$DOCKER_IMAGE_NAME-$OPENWRT_VERSION"
+
+# wget https://downloads.openwrt.org/releases/25.12.5/targets/ramips/rt305x/ -O- -q | grep -oP 'openwrt-toolchain[A-Za-z0-9-_\.]*\.tar\.[A-Za-z0-9-_\.]*'  | head -n 1
+
+export TOOLCHAIN_FILENAME="openwrt-toolchain-${OPENWRT_VERSION}-${OPENWRT_ARCH}-${OPENWRT_BOARD}_gcc-14.3.0_musl.Linux-x86_64.tar.zst"
+export TOOLCHAIN_LINK="https://downloads.openwrt.org/releases/${OPENWRT_VERSION}/targets/${OPENWRT_TARGET}/${TOOLCHAIN_FILENAME}"
+export TOOLCHAIN_FILE_PATH="/tmp/$TOOLCHAIN_FILENAME"
