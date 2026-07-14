@@ -61,16 +61,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     nano \
     xclip
 
-RUN git clone --filter=blob:none https://github.com/openwrt/openwrt/ /openwrt
+
 RUN groupadd -g $BUILDER_GID -f builder && \
     useradd -g $BUILDER_GID -u $BUILDER_UID builder && \
     echo "builder ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/builder && chmod 0440 /etc/sudoers.d/builder && \
-    mkdir -p /openwrt/build_scripts && chown -R builder:builder /openwrt && chmod -R 0777 /openwrt
+    chown -R builder:builder /openwrt && chmod -R 0777 /openwrt
 
-USER builder
+USER builder:$BUILDER_GID
 WORKDIR /openwrt
 
+RUN git clone --filter=blob:none https://github.com/openwrt/openwrt/ /openwrt
 RUN git checkout "v$OPENWRT_VERSION"
+
 RUN ./scripts/feeds update packages luci routing
 RUN ./scripts/feeds install -a
 
@@ -82,6 +84,7 @@ RUN git apply -v --allow-empty /tmp/mypatches/* && \
     git config user.email "sweet1jelly@yandex.ru" && \
     git add --all && git commit -m "apply custom patches"
 
+RUN mkdir -p /openwrt/build_scripts
 COPY --from=openwrt --chown=builder:builder .config /openwrt/.config
 COPY --from=openwrt --chown=builder:builder files /openwrt/files
 COPY --from=scripts --chown=builder:builder * /openwrt/build_scripts/
