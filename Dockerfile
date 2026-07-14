@@ -61,6 +61,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     nano \
     xclip
 
+RUN git clone --filter=blob:none https://github.com/openwrt/openwrt/ /openwrt
 RUN groupadd -g $BUILDER_GID -f builder && \
     useradd -g $BUILDER_GID -u $BUILDER_UID builder && \
     echo "builder ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/builder && chmod 0440 /etc/sudoers.d/builder && \
@@ -68,8 +69,6 @@ RUN groupadd -g $BUILDER_GID -f builder && \
 
 USER builder
 WORKDIR /openwrt
-
-RUN git clone --filter=blob:none https://github.com/openwrt/openwrt/ .
 
 RUN git checkout "v$OPENWRT_VERSION"
 RUN ./scripts/feeds update packages luci routing
