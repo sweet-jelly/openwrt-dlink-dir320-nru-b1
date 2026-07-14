@@ -9,7 +9,7 @@ fi
 
 env > "$OPENWRT_DIR/.env"
 docker build \
-    -f "$ROOT_DIR/Dockerfile"
+    -f "$ROOT_DIR/Dockerfile" \
     --build-context scripts="$ROOT_DIR/build_scripts" \
     --build-context openwrt="$OPENWRT_DIR" \
     -t "$DOCKER_IMAGE_NAME:$OPENWRT_VERSION" \
