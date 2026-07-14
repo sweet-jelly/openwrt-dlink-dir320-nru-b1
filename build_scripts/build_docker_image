@@ -19,5 +19,4 @@ docker build \
     --build-arg "TOOLCHAIN_FILENAME=$TOOLCHAIN_FILENAME" \
     --build-arg "OPENWRT_TARGET=$OPENWRT_TARGET" \
     --build-arg "OPENWRT_VERSION=$OPENWRT_VERSION" \
-    --mount "type=bind,src=${OPENWRT_DIR}/bin,dst=/openwrt/bin" \
     "$ROOT_DIR"
