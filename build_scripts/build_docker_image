@@ -7,12 +7,17 @@ if docker image inspect "$DOCKER_IMAGE_NAME:$OPENWRT_VERSION" > /dev/null 2>&1 ;
     exit 0
 fi
 
-env > "$OPENWRT_DIR/.env"
+# env > "$OPENWRT_DIR/.env"
 docker build \
     -f "$ROOT_DIR/Dockerfile" \
     --build-context scripts="$ROOT_DIR/build_scripts" \
     --build-context openwrt="$OPENWRT_DIR" \
     -t "$DOCKER_IMAGE_NAME:$OPENWRT_VERSION" \
-    --env-file "$OPENWRT_DIR/.env" \
+    --build-arg "TOOLCHAIN_LINK=$TOOLCHAIN_LINK" \
+    --build-arg "BUILDER_UID=$BUILDER_UID" \
+    --build-arg "BUILDER_GID=$BUILDER_GID" \
+    --build-arg "TOOLCHAIN_FILENAME=$TOOLCHAIN_FILENAME" \
+    --build-arg "OPENWRT_TARGET=$OPENWRT_TARGET" \
+    --build-arg "OPENWRT_VERSION=$OPENWRT_VERSION" \
     --mount "type=bind,src=${OPENWRT_DIR}/bin,dst=/openwrt/bin" \
     "$ROOT_DIR"

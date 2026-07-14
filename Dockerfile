@@ -5,11 +5,22 @@ FROM debian:13-slim
 
 LABEL description="OpenWrt build environment base image for D-Link DIR-320 NRU B1 (RT5350F, MIPS24KEc)"
 
+ARG TOOLCHAIN_LINK
+
+ARG BUILDER_UID
+ARG BUILDER_GID
+
+ARG OPENWRT_TARGET
+ENV OPENWRT_TARGET="$OPENWRT_TARGET"
+
+ARG OPENWRT_VERSION
+ENV OPENWRT_VERSION="$OPENWRT_VERSION"
+
+ARG TOOLCHAIN_FILENAME
+ENV TOOLCHAIN_FILENAME="$TOOLCHAIN_FILENAME"
+ENV TOOLCHAIN_FILE_PATH="/tmp/$TOOLCHAIN_FILENAME"
+
 ENV DEBIAN_FRONTEND=noninteractive
-ENV TOOLCHAIN_LINK
-ENV OPENWRT_VERSION
-ENV BUILDER_UID
-ENV BUILDER_GID
 
 # ENV TZ=Etc/UTC
 
@@ -58,13 +69,13 @@ RUN groupadd -g $BUILDER_GID -f builder && \
 USER builder
 WORKDIR /openwrt
 
-RUN git clone https://github.com/openwrt/openwrt/ .
+RUN git clone --filter=blob:none https://github.com/openwrt/openwrt/ .
 
 RUN git checkout "v$OPENWRT_VERSION"
 RUN ./scripts/feeds update packages luci routing
 RUN ./scripts/feeds install -a
 
-RUN wget "$TOOLCHAIN_LINK" -P /tmp/
+RUN wget "$TOOLCHAIN_LINK" -O "$TOOLCHAIN_FILE_PATH"
 
 COPY --from=openwrt *.patch /tmp/mypatches/
 RUN git apply -v --allow-empty /tmp/mypatches/* && \

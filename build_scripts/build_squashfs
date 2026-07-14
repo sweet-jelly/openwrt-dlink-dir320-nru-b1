@@ -2,7 +2,7 @@
 
 set -e
 
-wget -O $TOOLCHAIN_FILE_PATH
+# wget -O $TOOLCHAIN_FILE_PATH
 
 ./scripts/ext-toolchain.sh \
     --toolchain $TOOLCHAIN_FILE_PATH \
