@@ -5,7 +5,7 @@ set -e
 . ./set_env
 
 mkdir -p "$OPENWRT_DIR/bin"
-chown -R $BUILDER_UID:$BUILDER_GID "$OPENWRT_DIR/bin"
+chown -v -R $BUILDER_UID:$BUILDER_GID "$OPENWRT_DIR/bin"
 
 
 $SCRIPTS_DIR/build_docker_image

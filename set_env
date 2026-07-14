@@ -17,6 +17,7 @@ if [[ -x "$OPENWRT_DIR/set_env" ]] ; then
 fi
 
 export BUILDER_UID="$(id -u)"
+
 export BUILDER_GID="$(getent group builder | cut -d: -f3)"
 if [[ -z "$BUILDER_GID" ]] ; then
     export BUILDER_GID=7777
