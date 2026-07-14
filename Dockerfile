@@ -65,7 +65,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN groupadd -g $BUILDER_GID -f builder && \
     useradd -g $BUILDER_GID -u $BUILDER_UID builder && \
     echo "builder ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/builder && chmod 0440 /etc/sudoers.d/builder && \
-    chown -R builder:builder /openwrt && chmod -R 0777 /openwrt
+    mkdir /openwrt && chown -R builder:builder /openwrt && chmod -R 0777 /openwrt
 
 USER builder:$BUILDER_GID
 WORKDIR /openwrt
