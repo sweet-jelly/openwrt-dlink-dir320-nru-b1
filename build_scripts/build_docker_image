@@ -13,6 +13,6 @@ docker build \
     --build-context scripts="$ROOT_DIR/build_scripts" \
     --build-context openwrt="$OPENWRT_DIR" \
     -t "$DOCKER_IMAGE_NAME:$OPENWRT_VERSION" \
-    --env_file "$OPENWRT_DIR/.env" \
+    --env-file "$OPENWRT_DIR/.env" \
     --mount "type=bind,src=${OPENWRT_DIR}/bin,dst=/openwrt/bin" \
     "$ROOT_DIR"
