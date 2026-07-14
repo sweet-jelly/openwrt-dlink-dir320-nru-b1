@@ -2,8 +2,8 @@
 
 set -e
 
-if docker image inspect "$DOCKER_IMAGE_NAME:$OPENWRT_VERSION" > /dev/null 2>&1 ;
-    echo image "$DOCKER_IMAGE_NAME:$OPENWRT_VERSION" already exists
+if docker image inspect "$DOCKER_IMAGE_NAME:$OPENWRT_VERSION" > /dev/null 2>&1 ; then
+    echo "image $DOCKER_IMAGE_NAME:$OPENWRT_VERSION already exists"
     exit 0
 fi
 
