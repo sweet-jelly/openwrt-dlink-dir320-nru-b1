@@ -25,6 +25,10 @@ jobs:
           echo "OPENWRT_TARGET=$OPENWRT_TARGET" >> $GITHUB_ENV
           ./ci_build
 
+      - name: Show bin tree
+        run: |
+          tree -h $OPENWRT_DIR/bin
+
       - name: Upload Release Asset
         uses: softprops/action-gh-release@v2
         with:
