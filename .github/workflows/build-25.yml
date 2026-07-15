@@ -18,12 +18,17 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build
+      - name: Build Image
         run: |
           . ./set_env
           echo "OPENWRT_DIR=$OPENWRT_DIR" >> $GITHUB_ENV
           echo "OPENWRT_TARGET=$OPENWRT_TARGET" >> $GITHUB_ENV
-          ./ci_build
+          ./build_scripts/build_docker_image
+
+      - name: Run build
+        run: |
+          . ./set_env
+          ./build_scripts/run_docker_container
 
       - name: Upload Release Asset
         uses: softprops/action-gh-release@v2
