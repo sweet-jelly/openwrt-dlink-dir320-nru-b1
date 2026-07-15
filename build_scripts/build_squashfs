@@ -4,5 +4,5 @@ set -e
 
 cd /openwrt
 
-$SCRIPTS_DIR/setup_external_toolchain
+./build_scripts/setup_external_toolchain
 make -j$(nproc) || make V=sc
