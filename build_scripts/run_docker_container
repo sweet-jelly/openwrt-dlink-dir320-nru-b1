@@ -1,0 +1,9 @@
+#!/bin/bash
+
+set -e
+
+mkdir -p "$OPENWRT_DIR/bin"
+docker run --rm --name "$DOCKER_CONTAINER_NAME" \
+    --network host \
+    --mount "type=bind,src=${OPENWRT_DIR}/bin,dst=/openwrt/bin" \
+    "$DOCKER_IMAGE_NAME:$OPENWRT_VERSION"

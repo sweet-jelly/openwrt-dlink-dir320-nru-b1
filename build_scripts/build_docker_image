@@ -16,7 +16,6 @@ docker build \
     --build-arg "TOOLCHAIN_LINK=$TOOLCHAIN_LINK" \
     --build-arg "BUILDER_UID=$BUILDER_UID" \
     --build-arg "BUILDER_GID=$BUILDER_GID" \
-    --build-arg "TOOLCHAIN_FILENAME=$TOOLCHAIN_FILENAME" \
     --build-arg "OPENWRT_TARGET=$OPENWRT_TARGET" \
     --build-arg "OPENWRT_VERSION=$OPENWRT_VERSION" \
     "$ROOT_DIR"

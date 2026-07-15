@@ -16,10 +16,7 @@ ENV OPENWRT_TARGET="$OPENWRT_TARGET"
 ARG OPENWRT_VERSION
 ENV OPENWRT_VERSION="$OPENWRT_VERSION"
 
-ARG TOOLCHAIN_FILENAME
-ENV TOOLCHAIN_FILENAME="$TOOLCHAIN_FILENAME"
-ENV TOOLCHAIN_FILE_PATH="/tmp/$TOOLCHAIN_FILENAME"
-
+ENV TOOLCHAIN_DIR=/openwrt/external_toolchain
 ENV DEBIAN_FRONTEND=noninteractive
 
 # ENV TZ=Etc/UTC
@@ -51,6 +48,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     m4 \
     python3-setuptools \
     rsync \
+    tar \
+    zstd \
     swig \
     unzip \
     zlib1g-dev \
@@ -76,7 +75,7 @@ RUN git checkout "v$OPENWRT_VERSION"
 RUN ./scripts/feeds update packages luci routing
 RUN ./scripts/feeds install -a
 
-RUN wget "$TOOLCHAIN_LINK" -O "$TOOLCHAIN_FILE_PATH"
+RUN mkdir -p "$TOOLCHAIN_DIR" && wget "$TOOLCHAIN_LINK" -O- | tar -xvf- -C "$TOOLCHAIN_DIR"
 
 COPY --from=openwrt *.patch /tmp/mypatches/
 RUN git apply -v --allow-empty /tmp/mypatches/* && \

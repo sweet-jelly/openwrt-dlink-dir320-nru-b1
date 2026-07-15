@@ -4,12 +4,6 @@ set -e
 
 . ./set_env
 
-mkdir -p "$OPENWRT_DIR/bin"
 # chown -v -R $BUILDER_UID:$BUILDER_GID "$OPENWRT_DIR/bin"
-
-
 $SCRIPTS_DIR/build_docker_image
-docker run --rm --name "$DOCKER_CONTAINER_NAME" \
-    --network host \
-    --mount "type=bind,src=${OPENWRT_DIR}/bin,dst=/openwrt/bin" \
-    "$DOCKER_IMAGE_NAME:$OPENWRT_VERSION"
+$SCRIPTS_DIR/run_docker_container
