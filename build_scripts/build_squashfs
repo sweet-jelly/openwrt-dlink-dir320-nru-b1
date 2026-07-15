@@ -17,7 +17,7 @@ setup_external_toolchain() {
         --overwrite-config \
         --config "$OPENWRT_TARGET"
 
-    echo external toolchain dir set to `$REAL_TOOLCHAIN_DIR`
+    echo external toolchain dir set to "$REAL_TOOLCHAIN_DIR"
 }
 
 setup_external_toolchain

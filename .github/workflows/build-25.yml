@@ -4,6 +4,9 @@ on:
   push:
     branches: ['v*']
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -29,4 +32,4 @@ jobs:
           tag_name: ${{ github.sha }}
           generate_release_notes: false
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.CONTENT_ACCESS_SECRET }}
