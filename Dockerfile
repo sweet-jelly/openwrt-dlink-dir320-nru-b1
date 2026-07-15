@@ -75,7 +75,7 @@ RUN git checkout "v$OPENWRT_VERSION"
 RUN ./scripts/feeds update packages luci routing
 RUN ./scripts/feeds install -a
 
-RUN mkdir -p "$TOOLCHAIN_DIR" && wget "$TOOLCHAIN_LINK" -O- | tar -xvf- -C "$TOOLCHAIN_DIR"
+RUN mkdir -p "$TOOLCHAIN_DIR" && wget "$TOOLCHAIN_LINK" -q -O- | tar --zstd -xvf- -C "$TOOLCHAIN_DIR"
 
 COPY --from=openwrt *.patch /tmp/mypatches/
 RUN git apply -v --allow-empty /tmp/mypatches/* && \
