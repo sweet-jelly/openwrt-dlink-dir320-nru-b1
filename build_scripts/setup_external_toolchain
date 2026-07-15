@@ -1,0 +1,17 @@
+#!/bin/bash
+
+set -e
+
+[[ ! -d "$TOOLCHAIN_DIR" ]] && exit 0
+
+local GCC_DIR="$(find "$TOOLCHAIN_DIR" -name '*-linux-gcc')"
+[[ -z "$GCC_DIR" ]] && exit 0
+
+local REAL_TOOLCHAIN_DIR="$(dirname $(dirname "$GCC_DIR"))"
+
+./scripts/ext-toolchain.sh \
+    --toolchain $REAL_TOOLCHAIN_DIR \
+    --overwrite-config \
+    --config "$OPENWRT_TARGET"
+
+echo external toolchain dir set to "$REAL_TOOLCHAIN_DIR"

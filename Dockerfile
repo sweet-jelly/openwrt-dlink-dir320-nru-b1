@@ -89,6 +89,8 @@ COPY --from=openwrt --chown=builder:builder .config /openwrt/.config
 COPY --from=openwrt --chown=builder:builder files /openwrt/files
 COPY --from=scripts --chown=builder:builder * /openwrt/build_scripts/
 
+RUN ./build_scripts/setup_external_toolchain && make -j$(nproc) tools/install
+
 # # COPY --from=builder /home/builder/openwrt/bin/targets /output/
 # RUN find . -type f ! -name '*.bin' ! -name '*.img' ! -name '*.gz' ! -name '*.tar' -delete
 

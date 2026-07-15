@@ -4,23 +4,5 @@ set -e
 
 cd /openwrt
 
-setup_external_toolchain() {
-    [[ ! -d "$TOOLCHAIN_DIR" ]] && return
-
-    local GCC_DIR="$(find "$TOOLCHAIN_DIR" -name '*-linux-gcc')"
-    [[ -z "$GCC_DIR" ]] && return
-
-    local REAL_TOOLCHAIN_DIR="$(dirname $(dirname "$GCC_DIR"))"
-
-    ./scripts/ext-toolchain.sh \
-        --toolchain $REAL_TOOLCHAIN_DIR \
-        --overwrite-config \
-        --config "$OPENWRT_TARGET"
-
-    echo external toolchain dir set to "$REAL_TOOLCHAIN_DIR"
-}
-
-setup_external_toolchain
-
-
+$SCRIPTS_DIR/setup_external_toolchain
 make -j$(nproc) || make V=sc
