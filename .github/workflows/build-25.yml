@@ -18,12 +18,39 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      - name: Login to GHCR
+        id: login
+        uses: docker/login-action@v3
+        continue-on-error: true
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull image
+        id: pull_image
+        continue-on-error: true
+        if: success()
+        run: |
+          . ./set_env
+          docker pull ghcr.io/${{ github.repository }}/$DOCKER_IMAGE_NAME:$OPENWRT_VERSION
+
       - name: Build Image
+        if: steps.pull_image.outcome != 'success'
+        id: build_image
         run: |
           . ./set_env
           echo "OPENWRT_DIR=$OPENWRT_DIR" >> $GITHUB_ENV
           echo "OPENWRT_TARGET=$OPENWRT_TARGET" >> $GITHUB_ENV
           ./build_scripts/build_docker_image
+
+      - name: Upload Image
+        if: steps.build_image.outcome == 'success'
+        continue-on-error: true
+        run: |
+          . ./set_env
+          docker tag $DOCKER_IMAGE_NAME:$OPENWRT_VERSION ghcr.io/${{ github.repository }}/$DOCKER_IMAGE_NAME:$OPENWRT_VERSION
+          docker push ghcr.io/${{ github.repository }}/$DOCKER_IMAGE_NAME:$OPENWRT_VERSION
 
       - name: Run build
         run: |
