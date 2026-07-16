@@ -2,6 +2,7 @@
 
 set -e
 
+[[ -f "./.config.new" ]] && cat ./.config.new > ./.config
 [[ ! -d "$TOOLCHAIN_DIR" ]] && exit 0
 
 GCC_DIR="$(find "$TOOLCHAIN_DIR" -name '*-linux-gcc')"
