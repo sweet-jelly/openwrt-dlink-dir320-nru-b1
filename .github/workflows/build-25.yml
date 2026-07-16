@@ -6,6 +6,7 @@ on:
 
 permissions:
   contents: write
+  packages: write
 
 jobs:
   build:
@@ -61,7 +62,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            $OPENWRT_DIR/bin/targets/$OPENWRT_TARGET/*.bin
+            ${{ env.OPENWRT_DIR }}/bin/targets/${{ env.OPENWRT_TARGET }}/*.bin
           tag_name: $OPENWRT_DIR-${{ github.sha }}
           generate_release_notes: false
         env:
