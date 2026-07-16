@@ -1,7 +1,7 @@
 # ===============================
 # Stage 1: Build environment
 # ===============================
-FROM debian:13-slim
+FROM debian:13
 
 LABEL description="OpenWrt build environment base image for D-Link DIR-320 NRU B1 (RT5350F, MIPS24KEc)"
 
@@ -70,13 +70,16 @@ RUN groupadd -g $BUILDER_GID -f builder && \
 USER builder:$BUILDER_GID
 WORKDIR /openwrt
 
-RUN git clone --filter=blob:none https://github.com/openwrt/openwrt/ /openwrt
-RUN git checkout "v$OPENWRT_VERSION"
+RUN git clone --filter=blob:none https://github.com/openwrt/openwrt/ /openwrt && \
+    git checkout "v$OPENWRT_VERSION"
 
-RUN ./scripts/feeds update packages luci routing
-RUN ./scripts/feeds install -a
+RUN ./scripts/feeds update -a && \
+    ./scripts/feeds install -a
 
-RUN mkdir -p "$TOOLCHAIN_DIR" && wget "$TOOLCHAIN_LINK" -q -O- | tar --zstd -xvf- -C "$TOOLCHAIN_DIR"
+RUN mkdir -p "$TOOLCHAIN_DIR" && \
+    wget "$TOOLCHAIN_LINK" -O /tmp/toolchain && \
+    tar -xvf /tmp/toolchain -C "$TOOLCHAIN_DIR" && \
+    rm -f /tmp/toolchain
 
 COPY --from=openwrt *.patch /tmp/mypatches/
 RUN git apply -v --allow-empty /tmp/mypatches/* && \
@@ -86,13 +89,10 @@ RUN git apply -v --allow-empty /tmp/mypatches/* && \
 
 RUN mkdir -p /openwrt/build_scripts
 COPY --from=openwrt --chown=builder:builder .config /openwrt/.config
-COPY --from=openwrt --chown=builder:builder files /openwrt/files
 COPY --from=scripts --chown=builder:builder * /openwrt/build_scripts/
 
-RUN ./build_scripts/setup_external_toolchain && make -j$(nproc) tools/install
+RUN ./build_scripts/setup_external_toolchain && \
+    echo "CONFIG_BUILD_ALL_HOST_TOOLS=y" >> .config
+    make -j$(nproc) tools/install
 
-# # COPY --from=builder /home/builder/openwrt/bin/targets /output/
-# RUN find . -type f ! -name '*.bin' ! -name '*.img' ! -name '*.gz' ! -name '*.tar' -delete
-
-# CMD ["bash", "/openwrt/build-squashfs"]
 CMD [ "bash", "./build_scripts/build_squashfs" ]
