@@ -12,5 +12,5 @@ docker run $RM_FLAG --name "$DOCKER_CONTAINER_NAME" \
     --network host \
     --mount "type=bind,src=${OPENWRT_DIR}/bin,dst=/openwrt/bin" \
     --mount "type=bind,src=${OPENWRT_DIR}/.config,dst=/openwrt/.config.new" \
-    --mount "type=bind,src=${OPENWRT_DIR}/files,dst=/openwrt/files \
+    --mount "type=bind,src=${OPENWRT_DIR}/files,dst=/openwrt/files" \
     "$DOCKER_IMAGE_NAME:$OPENWRT_VERSION"

@@ -26,6 +26,7 @@ jobs:
           echo "OPENWRT_DIR=$OPENWRT_DIR" >> $GITHUB_ENV
           echo "OPENWRT_VERSION=$OPENWRT_DIR" >> $GITHUB_ENV
           echo "OPENWRT_TARGET=$OPENWRT_TARGET" >> $GITHUB_ENV
+          echo "DOCKER_IMAGE_NAME=$DOCKER_IMAGE_NAME" >> $GITHUB_ENV
 
       - name: Login to GHCR
         id: login
@@ -36,28 +37,40 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Pull image
-        id: pull_image
-        continue-on-error: true
-        if: success()
-        run: |
-          . ./set_env
-          docker pull ghcr.io/${{ github.repository }}/$DOCKER_IMAGE_NAME:$OPENWRT_VERSION
+      # - name: Pull image
+      #   id: pull_image
+      #   continue-on-error: true
+      #   if: success()
+      #   run: |
+      #     . ./set_env
+      #     docker pull ghcr.io/${{ github.repository }}/$DOCKER_IMAGE_NAME:$OPENWRT_VERSION
 
-      - name: Build Image
-        if: steps.pull_image.outcome != 'success'
-        id: build_image
-        run: |
-          . ./set_env
-          ./build_scripts/build_docker_image
+      - name: Build
+        run:
+          . /set_env
+          docker buildx build \
+            -f "./Dockerfile" \
+            --build-context scripts=./build_scripts \
+            --build-context openwrt="$OPENWRT_DIR" \
+            -t "$DOCKER_IMAGE_NAME:$OPENWRT_VERSION" \
+            --build-arg "TOOLCHAIN_LINK=$TOOLCHAIN_LINK" \
+            --build-arg "BUILDER_UID=$BUILDER_UID" \
+            --build-arg "BUILDER_GID=$BUILDER_GID" \
+            --build-arg "OPENWRT_TARGET=$OPENWRT_TARGET" \
+            --build-arg "OPENWRT_VERSION=$OPENWRT_VERSION" \
+            --cache-from=type=gha \
+            --cache-to=type=gha,mode=max \
+            .
 
-      - name: Upload Image
-        if: steps.build_image.outcome == 'success'
-        continue-on-error: true
-        run: |
-          . ./set_env
-          docker tag $DOCKER_IMAGE_NAME:$OPENWRT_VERSION ghcr.io/${{ github.repository }}/$DOCKER_IMAGE_NAME:$OPENWRT_VERSION
-          docker push ghcr.io/${{ github.repository }}/$DOCKER_IMAGE_NAME:$OPENWRT_VERSION
+      # - name: Upload Image
+      #   if: steps.build_image.outcome == 'success'
+      #   continue-on-error: true
+      #   run: |
+      #     . ./set_env
+      #     docker tag $DOCKER_IMAGE_NAME:$OPENWRT_VERSION ghcr.io/${{ github.repository }}/$DOCKER_IMAGE_NAME:$OPENWRT_VERSION
+      #     docker push ghcr.io/${{ github.repository }}/$DOCKER_IMAGE_NAME:$OPENWRT_VERSION
+
+
 
       - name: Run build
         run: |
