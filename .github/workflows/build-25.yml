@@ -47,7 +47,7 @@ jobs:
 
       - name: Build
         run:
-          . /set_env
+          . ./set_env
           docker buildx build \
             -f "./Dockerfile" \
             --build-context scripts=./build_scripts \
