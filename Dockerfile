@@ -92,7 +92,7 @@ COPY --from=openwrt --chown=builder:builder .config /openwrt/.config
 COPY --from=scripts --chown=builder:builder * /openwrt/build_scripts/
 
 RUN ./build_scripts/setup_external_toolchain && \
-    echo "CONFIG_BUILD_ALL_HOST_TOOLS=y" >> .config \
+    echo "CONFIG_BUILD_ALL_HOST_TOOLS=y" >> .config && \
     make -j$(nproc) tools/install
 
 CMD [ "bash", "./build_scripts/build_squashfs" ]
