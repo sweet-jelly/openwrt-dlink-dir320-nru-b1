@@ -62,6 +62,7 @@ jobs:
             OPENWRT_VERSION=${{ env.OPENWRT_VERSION }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          load: true
 
 
       # - name: Upload Image
