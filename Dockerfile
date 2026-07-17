@@ -32,29 +32,49 @@ ENV DEBIAN_FRONTEND=noninteractive
 # -------------------------------
 RUN apt-get update && apt-get install -y --no-install-recommends \
     autoconf \
-    build-essential \
-    clang \
-    flex \
+    bc \
+    binutils-gold \
     bison \
+    build-essential \
+    ca-certificates \
+    ccache \
+    ecj \
+    fastjar \
+    file \
+    flex \
     g++ \
     gawk \
-    gcc-multilib \
-    g++-multilib \
+    gcc-arm* \
     gettext \
     git \
-    ca-certificates \
-    libncurses5-dev \
+    help2man \
+    libbsd-dev \
+    libelf-dev \
+    liblzma-dev \
+    libncurses-dev \
     libssl-dev \
     m4 \
+    mtd-utils \
+    meson \
+    mold \
+    ninja-build \
+    pbzip2 \
+    pigz \
+    pkg-config \
+    python3-dev \
     python3-setuptools \
     rsync \
-    tar \
-    zstd \
+    subversion \
     swig \
+    texinfo \
+    time \
+    u-boot-tools \
     unzip \
-    zlib1g-dev \
-    file \
     wget \
+    xsltproc \
+    xxd \
+    zlib1g-dev \
+    zstd \
     curl \
     sudo \
     nano \
@@ -93,6 +113,6 @@ COPY --from=scripts --chown=builder:builder * /openwrt/build_scripts/
 
 RUN ./build_scripts/setup_external_toolchain && \
     echo "CONFIG_BUILD_ALL_HOST_TOOLS=y" >> .config && \
-    make -j$(nproc) tools/install || make V=sc
+    make -j$(nproc) tools/install || make tools/install V=sc
 
 CMD [ "bash", "./build_scripts/build_squashfs" ]
